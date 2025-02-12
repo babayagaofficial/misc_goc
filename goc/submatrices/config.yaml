@@ -1,0 +1,13 @@
+outdir: /home/daria/Documents/projects/ABC/goc/submatrices/submatrices
+
+subcom: /home/daria/Documents/projects/ABC/goc/type/objects/typing.tsv
+
+dcj: /home/daria/Documents/projects/ABC/goc/all_plasmids_distances.tsv
+
+pling: /home/daria/Documents/projects/pling
+
+genomes_list: /home/daria/Documents/projects/ABC/goc/clean_input.txt
+
+topology: None
+
+ilp_solver: GLPK
