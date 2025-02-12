@@ -1,0 +1,30 @@
+import pandas as pd
+
+SUBCOMMUNITIESPATH = snakemake.input.subcom
+outdir = snakemake.params.outdir
+subcommunities_df = pd.read_csv(SUBCOMMUNITIESPATH, sep='\t')
+subcommunities_list = list(subcommunities_df['type'])
+count = {subcommunity:subcommunities_list.count(subcommunity) for subcommunity in set(subcommunities_list)}
+dcj_tsv = snakemake.input.tsv
+dcj_dists = {}
+with open(dcj_tsv) as f:
+    next(f)
+    for line in f:
+        plasmid1, plasmid2, dist = line.strip().split("\t")
+        dcj_dists[(plasmid1,plasmid2)] = int(dist)
+        dcj_dists[(plasmid2,plasmid1)] = int(dist)
+submatrices = {}
+
+for subcommunity in count.keys():
+    if count[subcommunity]>2:
+        plasmids = list(subcommunities_df[subcommunities_df['type']==subcommunity]['plasmid'])
+        distances = pd.DataFrame(index = [len(plasmids)] + plasmids, columns = plasmids)
+        for plasmid1 in plasmids:
+            for plasmid2 in plasmids:
+                if (plasmid1,plasmid2) in dcj_dists.keys():
+                    distances.loc[plasmid1,plasmid2]=dcj_dists[(plasmid1,plasmid2)]
+                elif plasmid1 == plasmid2:
+                    distances.loc[plasmid1,plasmid2]=0
+                else:
+                    distances.loc[plasmid1,plasmid2]=pd.NA
+        distances.to_csv(f"{outdir}/incomplete/{subcommunity}_incomplete.dist", sep="\t", header=False)
