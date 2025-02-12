@@ -1,0 +1,35 @@
+import glob
+import os
+
+
+cluster_path = "/nfs/research/zi/daria/game_of_clones/lists" #path to directory with a text file for each cluster, which contains a list of fasta paths to memebers of the cluster
+out = "/hps/nobackup/iqbal/daria/game_of_clones/pangraph"
+clusters = [os.path.basename(el).replace('.txt','') for el in glob.glob(f"{cluster_path}/*.txt")]
+
+def get_list(cluster):
+    files = []
+    with open(f"{cluster_path}/{cluster}.txt") as f:
+        for line in f:
+            files.append(line.strip())
+    return files
+
+rule all:
+    input:
+        [f"{out}/{cluster}" for cluster in clusters]
+
+rule pangraph:
+    input:
+        fastas = lambda wildcards: get_list(wildcards.cluster)
+    output:
+        ann_dir = directory(f"{out}/{{cluster}}")
+    conda:
+        "pangraph"
+    resources:
+        mem_mb=lambda wildcards, attempt: 40000*attempt
+    threads: 8
+    shell:
+        """
+        export JULIA_NUM_THREADS={threads}
+        julia --project=. src/PanGraph.jl build --circular -k minimap2 -s 20 -b 5 {input.fastas} > {output}/pangraph.json
+        julia --project=. src/PanGraph.jl export --no-duplications --output-directory {output} pangraph.json
+        """
