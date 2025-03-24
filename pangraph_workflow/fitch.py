@@ -2,52 +2,61 @@ from ete3 import Tree
 import pypangraph as pp
 import glob
 import os
+import pandas as pd
 
 
 def fitch_bottom_up(node):
     """Bottom-up pass to determine possible character states for each node."""
     if node.is_leaf():
-        node.add_feature("possible_states", node.state)  # Assign leaf state
+        node.add_feature("possible_states", node.states)  # Assign leaf state
     else:
         left_states = fitch_bottom_up(node.children[0])
         right_states = fitch_bottom_up(node.children[1])
 
         # Ensure the possible_states attribute exists
-        node.add_feature("possible_states", set())
+        node.add_feature("possible_states", dict())
 
         # Intersection if possible, otherwise union
-        node.possible_states = left_states & right_states if left_states & right_states else left_states | right_states
+        for block in left_states.keys(): #infer for each block independently
+            node.possible_states[block] = left_states[block] & right_states[block] if left_states[block] & right_states[block] else left_states[block] | right_states[block]
 
     return node.possible_states
 
 def fitch_top_down(node, parent=None):
     """Top-down pass using the six-step Fitch algorithm to assign final states."""        
     
-    # Step 1: For the root, the final set is simply the preliminary set
-    if parent is None or node.is_leaf():
-        node.add_feature("final_states", node.possible_states.copy())
-    else:
-        # Step I: Check if preliminary nodal set ⊆ parent final set
-        if node.possible_states.issubset(parent.final_states):
-            # Step II: Eliminate markers not in parent’s final set
-            node.add_feature("final_states", node.possible_states.intersection(parent.final_states))
-        else:
-            # Step III: Determine whether it was a union or intersection
-            left_states = node.children[0].possible_states
-            right_states = node.children[1].possible_states
-            was_union = not left_states.intersection(right_states)
-            
-            if was_union:
-                # Step IV: Union case
-                final_set = node.possible_states.union(parent.final_states)
-            else:
-                # Step V: Intersection case
-                final_set = node.possible_states.copy()
-                for state in parent.final_states:
-                    if state in left_states or state in right_states:
-                        final_set.add(state)
+    if node.is_leaf():
+        node.add_feature("final_states", node.possible_states)
 
-            node.add_feature("final_states", final_set)
+    # Step 1: For the root, choose arbitrary count for ambiguous blocks
+    elif parent is None:
+        node.add_feature("final_states", dict())
+        for block in node.possible_states.keys():
+            node.final_states[block] = {node.possible_states[block].pop()}
+    else:
+        node.add_feature("final_states", dict())
+        for block in node.possible_states.keys(): #infer for each block independently
+            # Step I: Check if preliminary nodal set ⊆ parent final set
+            if parent.final_states[block].issubset(node.possible_states[block]):
+                # Step II: Eliminate markers not in parent’s final set
+                node.final_states[block] = node.possible_states[block].intersection(parent.final_states[block])
+            else:
+                # Step III: Determine whether it was a union or intersection
+                left_states = node.children[0].possible_states[block]
+                right_states = node.children[1].possible_states[block]
+                was_union = not left_states.intersection(right_states)
+                
+                if was_union:
+                    # Step IV: Union case
+                    final_set = node.possible_states[block].union(parent.final_states[block])
+                else:
+                    # Step V: Intersection case
+                    final_set = node.possible_states[block].copy()
+                    for state in parent.final_states[block]:
+                        if state in left_states or state in right_states:
+                            final_set.add(state)
+                node.final_states[block] = final_set
+                
     
     # Recursively process child nodes
     for child in node.children:
@@ -80,10 +89,21 @@ def read_block_counts(pangraph_path, tree):
     stats_df = graph.to_blockstats_df()
     chr_to_plasmid = {chr.name:plasmid for chr in tree.iter_leaves() for plasmid in bl_count.columns if chr.name in plasmid}
     for leaf in tree.iter_leaves():
-        present = list(bl_count[chr_to_plasmid[leaf.name]][bl_count[chr_to_plasmid[leaf.name]]>0].index)
-        present = set([block for block in present if stats_df.loc[block,"len"]>200])
-        leaf.add_feature("state", present)
+        states = {block:{int(bl_count.loc[block, chr_to_plasmid[leaf.name]])} for block in bl_count.index}
+        leaf.add_feature("states", states)
     return bl_count
+
+def tree_to_df(tree): #after reconstruction
+    root = tree.get_tree_root()
+    counts = {block:[] for block in root.final_states.keys()}
+    index = []
+    for node in tree.traverse():
+        index.append(node.name)
+        for block in node.final_states.keys():
+            counts[block].append(node.final_states[block].pop())
+    df = pd.DataFrame(counts, index=index)
+    return df
+
 
 def tree_to_tsv(tree, block_counts, tsv):
     chr_to_plasmid = {chr.name:plasmid for chr in tree.iter_leaves() for plasmid in bl_count.columns if chr.name in plasmid}
@@ -118,7 +138,14 @@ node = tree&"C"
 node.add_feature("state", {1,2,3,4})
 node = tree&"D"
 node.add_feature("state", {1,2,4})
+
+# Run Fitch's method
+fitch_reconstruction(tree)
+
+# Print reconstructed tree states
+print_tree(tree)
 '''
+
 cluster_path = "/home/daria/Documents/projects/ABC/clades/lists"
 #clusters = [os.path.basename(el).replace('.txt','') for el in glob.glob(f"{cluster_path}/*.txt")]
 clusters = ["st131_cl416_community_0_subcommunity_503"]
@@ -132,15 +159,15 @@ for cluster in clusters:
 
     pangraph = f"/home/daria/Documents/projects/ABC/pangraph_workflow/pangraph/{cluster}/pangraph.json"
     bl_count = read_block_counts(pangraph, tree)
-
+    print(bl_count.transpose())
     # Run Fitch's method
     fitch_reconstruction(tree)
 
+    df = tree_to_df(tree)
+    flip = df.transpose()
+    print(len(flip[flip["I_1"]>0]["I_1"]))
+
     # Print reconstructed tree states
     #print_tree(tree)
-
-    for n in tree.traverse():
-        print(n.name, len(n.final_states))
-
-    tree_to_tsv(tree,bl_count,f"fitch/ranges/{cluster}_range.tsv")
-    tree.write(format=1, outfile=f"fitch/relabelled_trees/{cluster}.nw")
+    #tree_to_tsv(tree,bl_count,f"fitch/ranges/{cluster}_range.tsv")
+    #tree.write(format=1, outfile=f"fitch/relabelled_trees/{cluster}.nw")
