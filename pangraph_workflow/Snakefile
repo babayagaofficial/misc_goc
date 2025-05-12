@@ -1,11 +1,10 @@
 import glob
 import os
 
-cluster_path = "/home/daria/Documents/projects/ABC/clades/lists" #path to directory with a text file for each cluster, which contains a list of fasta paths to memebers of the cluster
-out = "pangraph_2"
+cluster_path = "/home/daria/Documents/projects/ABC/clades/all_lists" #path to directory with a text file for each cluster, which contains a list of fasta paths to memebers of the cluster
+out = "pangraph"
 clusters = [os.path.basename(el).replace('.txt','') for el in glob.glob(f"{cluster_path}/*.txt")]
-clusters.remove("st69_cl461_community_0_subcommunity_499")
-clusters.remove("st95_cl461_community_0_subcommunity_502")
+#clusters = ["st95_cl357_community_0_subcommunity_503", "st95_cl458_community_0_subcommunity_503", "st95_cl656_community_0_subcommunity_503"]
 
 
 def get_list(cluster):
@@ -28,7 +27,9 @@ def get_gff_fasta(cluster, gff_id):
 
 rule all:
     input:
-        [f"{out}/{cluster}/pangraph.gfa" for cluster in clusters]
+        rtt_snp = [f"fitch/scores/filtered/{cluster}_rtt_snp_scores.tsv" for cluster in clusters],
+        rtt_count = [f"fitch/scores/{cluster}_rtt_scores.tsv" for cluster in clusters],
+        unimogs = [f"unimogs/{cluster}.unimog" for cluster in clusters]
 
 rule ggcaller:
     input:
@@ -70,6 +71,46 @@ rule pangraph:
     threads: 8
     shell:
         """
-        pangraph build --circular -k minimap2 -s 20 -b 5 -a 150 --len 200 {params.fastas} > {output.json}
+        pangraph build --circular -k minimap2 -s 20 -b 5 --len 200 {params.fastas} > {output.json}
         pangraph export gfa --output {output.gfa} --minimum-length 200 {output.json}
         """
+
+rule pangraph_to_unimog:
+    input:
+        pangraph = f"{out}/{{cluster}}/pangraph.json"
+    output:
+        unimog = "unimogs/{cluster}.unimog"
+    conda:
+        "fitch"
+    script:
+        "pangraph_to_unimog.py"
+
+rule fitch_pangraph:
+    input:
+        tree = "/home/daria/Documents/projects/ABC/clades/trees/{cluster}.nw",
+        pangraph = f"{out}/{{cluster}}/pangraph.json"
+    output:
+        ranges = "fitch/ranges/{cluster}_range.tsv",
+        rtt = "fitch/scores/{cluster}_rtt_scores.tsv",
+        relabelled_tree = "fitch/relabelled_trees/{cluster}.nw"
+    params:
+        mode = "pangraph",
+        cluster = lambda wildcards: wildcards.cluster
+    conda:
+        "fitch"
+    script:
+        "fitch.py"
+
+rule fitch_snp:
+    input:
+        tree = "/home/daria/Documents/projects/ABC/clades/trees/{cluster}.nw",
+        pangraph = f"{out}/{{cluster}}/pangraph.json"
+    output:
+        rtt = "fitch/scores/filtered/{cluster}_rtt_snp_scores.tsv"
+    params:
+        mode = "snp",
+        cluster = lambda wildcards: wildcards.cluster
+    conda:
+        "fitch"
+    script:
+        "fitch.py"

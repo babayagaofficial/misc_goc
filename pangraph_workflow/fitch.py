@@ -3,31 +3,33 @@ import pypangraph as pp
 import glob
 import os
 import pandas as pd
+import numpy as np
+from itertools import chain
 
 
-def fitch_bottom_up(node):
+def fitch_bottom_up(node, score):
     """Bottom-up pass to determine possible character states for each node."""
     if node.is_leaf():
         node.add_feature("possible_states", node.states)  # Assign leaf state
     else:
-        left_states = fitch_bottom_up(node.children[0])
-        right_states = fitch_bottom_up(node.children[1])
+        left_states = fitch_bottom_up(node.children[0], score)
+        right_states = fitch_bottom_up(node.children[1], score)
 
         # Ensure the possible_states attribute exists
         node.add_feature("possible_states", dict())
 
         # Intersection if possible, otherwise union
         node.possible_states = left_states & right_states if left_states & right_states else left_states | right_states
+        score[0] = score[0] if left_states & right_states else score[0] + 1
 
     return node.possible_states
 
-def single_fitch_top_down(node, parent=None):
-    """Top-down pass using the six-step Fitch algorithm to assign final states."""        
+def fitch_top_down(node, parent=None):
     
     if node.is_leaf():
         node.add_feature("final_states", node.possible_states)
     elif parent is None:
-        pass
+        node.add_feature("final_states", node.possible_states)
     else:
         node.add_feature("final_states", dict())
         # Step I: Check if preliminary nodal set ⊆ parent final set
@@ -54,33 +56,20 @@ def single_fitch_top_down(node, parent=None):
     
     # Recursively process child nodes
     for child in node.children:
-        single_fitch_top_down(child, node)
-
-def fitch_top_down(tree):
-    root = tree.get_tree_root()
-    recon_trees = []
-    while root.possible_states: #Want to reconstruct all possible trees, so go through all elements in candidate set of root
-        recon_tree = tree.copy()
-        # Step 1: For the root, choose arbitrary count for ambiguous blocks
-        recon_root = recon_tree.get_tree_root()
-        recon_root.add_feature("final_states", dict())
-        recon_root.final_states = {root.possible_states.pop()}
-        single_fitch_top_down(recon_root)
-        recon_trees.append(recon_tree)
-    return recon_trees
-
+        fitch_top_down(child, node)
 
 
 def fitch_reconstruction(tree):
     """Executes both phases of Fitch's algorithm on an ete3 Tree."""
     root = tree.get_tree_root()
-    fitch_bottom_up(root)
-    recon_trees = fitch_top_down(root)
-    return recon_trees
+    score = [0]
+    fitch_bottom_up(root, score)
+    fitch_top_down(root)
+    return score
 
 def print_tree(node, level=0):
     """Utility function to print the tree with assigned states."""
-    print("  " * level + f"{node.name}: {node.final_states}")
+    print("  " * level + f"{node.name}: {node.final_states}, {node.possible_states}")
     for child in node.children:
         print_tree(child, level + 1)
 
@@ -102,36 +91,81 @@ def read_block_counts(pangraph_path, tree, min_len):
     all_trees = {block:tree.copy() for block in bl_count.index}
     for block in all_trees.keys(): 
         for leaf in all_trees[block].iter_leaves():
+            #states = {1 if bl_count.loc[block, chr_to_plasmid[leaf.name]]>0 else 0}
             states = {bl_count.loc[block, chr_to_plasmid[leaf.name]]}
             leaf.add_feature("states", states)
     return list(stats_df[stats_df["core"]==True].index), all_trees
 
-def tree_to_df(tree): #after reconstruction, get counts as a DataFrame for both ancestral genomes and leaves
-    root = tree.get_tree_root()
-    counts = {block:[] for block in root.final_states.keys()}
-    index = []
-    for node in tree.traverse():
-        index.append(node.name)
-        for block in node.final_states.keys():
-            counts[block].append(node.final_states[block].pop())
-    df = pd.DataFrame(counts, index=index)
-    return df
+def read_core_polymorphisms(pangraph_path, tree):
+    graph = pp.Pangraph.from_json(pangraph_path)
+    core_aln = graph.core_genome_alignment()
+    plasmids = [record.id for record in core_aln]
+    # turn the alignment in a numpy matrix
+    A = np.array(core_aln)
+    # exclude sites with gaps
+    non_gap = np.all(A != "-", axis=0)
+    A = A[:, non_gap]
+    # whether a site is polymorphic
+    is_polymorphic_w_recomb = np.any(A != A[0, :], axis=0)
+    indices = [i for i in range(0,len(is_polymorphic_w_recomb),500) if is_polymorphic_w_recomb[i:i+500].sum()<=3]
+    iterator = []
+    for i in range(0,len(is_polymorphic_w_recomb),500):
+        if i in indices:
+            iterator.append(is_polymorphic_w_recomb[i:i+500])
+        else:
+            iterator.append([False for i in range(500)])
+    is_polymorphic = list(chain.from_iterable(iterator))
+    chr_to_plasmid = {chr.name:plasmid for chr in tree.iter_leaves() for plasmid in plasmids if chr.name in plasmid}
+    all_trees = {site:tree.copy() for site in range(len(is_polymorphic)) if is_polymorphic[site]}
+    for site in all_trees.keys():
+        for leaf in all_trees[site].iter_leaves():
+            row = plasmids.index(chr_to_plasmid[leaf.name])
+            states = {A[row][site]}
+            leaf.add_feature("states", states)
+    return all_trees
+            
 
 
-def tree_to_tsv(recon_trees, core, tsv): #unfinished
+def tree_to_tsv(recon_trees, core, tsv):
     with open(tsv, "w") as f:
         f.write("genome\tfamily\tlower\thigher\n")
-        for node in tree.traverse():
-            for block in recon_trees.keys():
-                f.write(f"{node.name}\t{block}\t")
-                counts = [(tree&node.name).final_states.pop() for tree in recon_trees[block]]
-                lower = min(counts)
-                upper = max(counts)
-                f.write(f"{lower}\t{upper}\n")
-            for block in core:
-                f.write(f"{node.name}\t{block}\t1\t1\n")
+        for block in recon_trees.keys():
+            tree = recon_trees[block]
+            for node in tree.traverse():
+                if not node.is_leaf():
+                    f.write(f"{node.name}\t{block}\t")
+                    counts = list((tree&node.name).final_states)
+                    lower = min(counts)
+                    upper = max(counts)
+                    f.write(f"{lower}\t{upper}\n")
+                    for block in core:
+                        f.write(f"{node.name}\t{block}\t1\t1\n")
 
+def output_scores(scores, tsv):
+    with open(tsv, "w") as f:
+        f.write("block\tscore\n")
+        for block in scores.keys():
+            f.write(f"{block}\t{scores[block][0]}\n")
 
+def root_to_tip_scores(recon_trees, filepath):
+    root_to_tip = {block:{} for block in recon_trees.keys()}
+    for block in recon_trees.keys():
+        tree = recon_trees[block]
+        for leaf in tree.iter_leaves():
+            score = 0
+            path = leaf.get_ancestors()  # from leaf to root
+            path = list(reversed(path)) + [leaf]
+            states = list(path[0].final_states)
+            state = states[0]
+            for i in range(1,len(path)):
+                if not state in path[i].final_states:
+                    score+=1
+                    state = path[i].final_states.pop()
+                    path[i].final_states.add(state)
+            root_to_tip[block][leaf.name] = score
+    df = pd.DataFrame(data=root_to_tip)
+    df.to_csv(filepath, sep="\t")
+    return root_to_tip
 
 
 
@@ -160,28 +194,34 @@ fitch_reconstruction(tree)
 print_tree(tree)
 '''
 
-cluster_path = "/home/daria/Documents/projects/ABC/clades/lists"
-clusters = [os.path.basename(el).replace('.txt','') for el in glob.glob(f"{cluster_path}/*.txt")]
-#clusters = ["st131_cl416_community_0_subcommunity_503"]
-clusters.remove("st69_cl461_community_0_subcommunity_499")
-clusters.remove("st95_cl461_community_0_subcommunity_502")
+scores = {}
+cluster = snakemake.params.cluster
+filepath = snakemake.input.tree
+tree = read_tree(filepath) 
 
-for cluster in clusters:
-    print(cluster)
-    filepath = f"/home/daria/Documents/projects/ABC/clades/trees/{cluster}.nw"
-    tree = read_tree(filepath)
+pangraph = snakemake.input.pangraph
 
-    pangraph = f"/home/daria/Documents/projects/ABC/pangraph_workflow/pangraph/{cluster}/pangraph.json"
+if snakemake.params.mode == "pangraph":
     core, all_trees = read_block_counts(pangraph, tree, 200)
+else:
+    all_trees = read_core_polymorphisms(pangraph, tree)
 
-    # Run Fitch's method
-    recon_trees = {}
-    for block in all_trees.keys():
-        recon_trees[block] = fitch_reconstruction(all_trees[block])
-        # Print reconstructed tree states
-        #for tree in recon_trees[block]:
-        #    print(block)
-        #    print_tree(tree)
+# Run Fitch's method
+for block in all_trees.keys():
+    k = fitch_reconstruction(all_trees[block])
+    scores[block] = k
+    # Print reconstructed tree states
+    #print_tree(all_trees[block])
 
-    tree_to_tsv(recon_trees,core,f"fitch/ranges/{cluster}_range.tsv")
-    #tree.write(format=1, outfile=f"fitch/relabelled_trees/{cluster}.nw")
+
+if snakemake.params.mode == "pangraph":
+    root_to_tip = root_to_tip_scores(all_trees, f"fitch/scores/{cluster}_rtt_scores.tsv")
+    tree_to_tsv(all_trees,core,f"fitch/ranges/{cluster}_range.tsv")
+
+    new_root = Tree()
+    new_root.name = "I_1"
+    new_root.add_child(tree)
+    tree.write(format=8, outfile=f"fitch/relabelled_trees/{cluster}.nw")
+else:
+    root_to_tip = root_to_tip_scores(all_trees, f"fitch/scores/filtered/{cluster}_rtt_snp_scores.tsv") #filtered as in accounting for recombination
+
