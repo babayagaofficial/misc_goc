@@ -126,20 +126,22 @@ def read_core_polymorphisms(pangraph_path, tree):
             
 
 
-def tree_to_tsv(recon_trees, core, tsv):
+def tree_to_tsv(t, recon_trees, core, tsv):
     with open(tsv, "w") as f:
         f.write("genome\tfamily\tlower\thigher\n")
         for block in recon_trees.keys():
             tree = recon_trees[block]
             for node in tree.traverse():
                 if not node.is_leaf():
-                    f.write(f"{node.name}\t{block}\t")
                     counts = list((tree&node.name).final_states)
                     lower = min(counts)
                     upper = max(counts)
-                    f.write(f"{lower}\t{upper}\n")
-                    for block in core:
-                        f.write(f"{node.name}\t{block}\t1\t1\n")
+                    if not (lower==0 and upper==0):
+                        f.write(f"{node.name}\t{block}\t{lower}\t{upper}\n")
+        for node in t.traverse():
+            if not node.is_leaf():
+                for block in core:
+                    f.write(f"{node.name}\t{block}\t1\t1\n")
 
 def output_scores(scores, tsv):
     with open(tsv, "w") as f:
@@ -216,7 +218,7 @@ for block in all_trees.keys():
 
 if snakemake.params.mode == "pangraph":
     root_to_tip = root_to_tip_scores(all_trees, f"fitch/scores/{cluster}_rtt_scores.tsv")
-    tree_to_tsv(all_trees,core,f"fitch/ranges/{cluster}_range.tsv")
+    tree_to_tsv(tree, all_trees,core,f"fitch/ranges/{cluster}_range.tsv")
 
     new_root = Tree()
     new_root.name = "I_1"
