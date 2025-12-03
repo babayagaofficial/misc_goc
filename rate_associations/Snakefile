@@ -1,0 +1,38 @@
+import glob
+import os
+from pathlib import Path
+import subprocess
+
+path = "/home/daria/Documents/projects/ABC/pangraph_workflow/spp_dcj_sol/res_adj"
+clusters = [os.path.basename(el).replace('_edists.txt','') for el in glob.glob(f"{path}/*_edists.txt")]
+cluster_path = "/home/daria/Documents/projects/ABC/clades/lists_phylofactor" #path to directory with a text file for each cluster, which contains a list of fasta paths to memebers of the cluster
+out = "isescan"
+
+def get_list(cluster):
+    genomes = []
+    with open(f"{cluster_path}/{cluster}.txt") as f:
+        for line in f:
+            fasta = line.strip()
+            genome = os.path.basename(fasta).replace('.fna','')
+            genomes.append(genome)
+    return genomes
+
+rule all:
+    input:
+        ise = [f"{out}/{cluster}/{seq}" for cluster in clusters for seq in get_list(cluster)]
+
+
+rule isescan:
+    input:
+        fasta = "/home/daria/Documents/projects/ABC/goc/fastas/{seq}.fna"
+    output:
+        ise = directory(f"{out}/{{cluster}}/{{seq}}")
+    conda:
+        "isescan"
+    resources:
+        mem_mb=lambda wildcards, attempt: 40000*attempt
+    threads: 4
+    shell:
+        """
+        isescan.py --seqfile {input.fasta} --output {output.ise} --nthread 4
+        """
