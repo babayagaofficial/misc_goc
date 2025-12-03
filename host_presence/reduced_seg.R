@@ -3,27 +3,25 @@ library(ape)
 library(stepR)
 #library(treeio)
 
-args <- commandArgs()
-print(args)
-subcom <- args[2]
-st <-  args[3]
+subcom <- "community_0_subcommunity_503"
+st <-  95
 
-path <- "/hps/nobackup/iqbal/daria/game_of_clones/treeseg"
-out_dir <- paste0(path, "/st", st, "/", subcom)
-dir.create(paste0(path, "/st", st))
+path <- "treeseg"
+out_dir <- paste0("st", st, "/", subcom)
+dir.create(paste0("st", st))
 dir.create(out_dir)
 
 # Input
-tree <- read.tree(paste0("host_tree/pruned_dated_", st, ".nwk"))  # Load your tree
+tree <- read.tree(paste0("host_tree/pruned_", st, ".nwk"))  # Load your tree
 print(is.recursive(tree))
-all_traits <- read.csv("presence_per_host.tsv", row.names = 1, sep = "\t")  # Load your traits matrix
+all_traits <- read.csv("presence_per_host_hashless.tsv", row.names = 1, sep = "\t")  # Load your traits matrix
 traits <- all_traits[, subcom]
 
 names(traits) <- rownames(all_traits)  # Ensure species names are set
 
 traits <- traits[tree$tip.label]
 
-seg <- treeSeg(traits, tree, alpha = 0.05)
+seg <- treeSeg(traits, tree, alpha = 0.5)
 
 #store output
 
@@ -54,7 +52,7 @@ plot(tree, type = "phylogram", show.tip.label = F , use.edge.length = F,
 for(i in seq_along(seg$mlAN)){
   nodelabels("", seg$mlAN[i], pch = 18, col = "red", frame = "none",cex = 2)
 }
-text(180,-8, 'community_0_subcommunity_503')
+text(180,-8, subcom)
 
 # plot tip phenos
 plot(1:n, rep(0,n), axes = F, col = c("lightgray", "black")[traits+1], pch = "|", cex = 2,xlab = '',ylab = '') 

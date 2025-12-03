@@ -4,13 +4,13 @@ import numpy as np
 
 #filepath = '/home/daria/Documents/projects/ABC/host_presence/host_tree/norm_phylogeny.nwk'
 
-st = 69
+st = 95
 filepath = f'/home/daria/Documents/projects/ABC/host_presence/host_tree/ST{st}_100000000_1000_arc_BD.tre'
 
 meta = pd.read_csv("/home/daria/Documents/projects/ABC/goc/media-1.csv", usecols=["Genome_ID", "ST"])
 
 hosts = list(set(meta[meta["ST"]==st]["Genome_ID"].values))
-hosts.remove('30134_6#317') #this is not in the dated tree for ST69 for some reason
+#hosts.remove('30134_6#317') #this is not in the dated tree for ST69 for some reason
 
 '''
 for i in range(len(hosts)):
@@ -27,7 +27,6 @@ subcomms = [subcom for subcom in presence.columns if presence[subcom].any()]
 t = Tree(filepath, format=1)
 
 t.prune(hosts)
-
 
 colour_codes = []
 colours = {}
@@ -62,11 +61,13 @@ def layout(n):
 ts = TreeStyle()
 ts.layout_fn = layout
 ts.show_leaf_name = False
-#ts.scale = 5000
+#ts.scale = 15
 ts.branch_vertical_margin = 2.5
+
 
 for host in sorted(colours.keys()):
 	ts.legend.add_face(CircleFace(2, colours[host]), column=0)
 	ts.legend.add_face(TextFace(f" {host}", fsize=10), column=1)
+
 
 t.render(f'{st}_dated.pdf', tree_style=ts)

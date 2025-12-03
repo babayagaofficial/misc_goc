@@ -4,15 +4,17 @@ library(ape)  # For phylogenetic tree handling
 library(ggtree)
 library(ggplot2)
 
-subcom <- "community_0_subcommunity_496"
-st <-  131
+args <- commandArgs()
+print(args)
+subcom <- args[2]
+st <-  args[3]
 
 path <- "phylofactor"
 out_dir <- paste0("phylofactor/st", st, "/", subcom)
 dir.create(paste0("phylofactor/st", st))
 dir.create(out_dir)
 
-tree <- read.tree(paste0("host_tree/pruned_dated_", st, ".nwk"))  # Load your tree
+tree <- read.tree(paste0("host_tree/ST", st, "_100000000_1000_arc_BD.tre"))  # Load your tree
 all_traits <- read.csv("/home/daria/Documents/projects/ABC/host_presence/presence_per_host.tsv", row.names = 1, sep = "\t")  # Load your traits matrix
 traits <- all_traits[, subcom]
 

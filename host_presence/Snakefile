@@ -1,11 +1,11 @@
 import pandas as pd
 
-outdir = "/hps/nobackup/iqbal/daria/game_of_clones/treeseg"
+outdir = "/home/daria/Documents/projects/ABC/host_presence/phylofactor"
 sts = [131, 95, 73, 69]
-presence = pd.read_csv("presence_per_st.tsv", sep='\t', index_col = 0).transpose()[sts]
+presence = pd.read_csv("presence_per_st/presence_per_st_abs.tsv", sep='\t', index_col = 0).transpose()[sts]
 
 def get_subcoms(st):
-    subcoms = presence[presence[st]>5].index.to_list()
+    subcoms = presence[presence[st]>3].index.to_list()
     return subcoms
 
 
@@ -13,17 +13,17 @@ rule all:
     input:
         [f"{outdir}/st{st}/{subcom}/tree.pdf" for st in sts for subcom in get_subcoms(st)]
 
-rule treeseg:
+rule phylofactor:
     input:
-        tree = "/nfs/research/zi/daria/game_of_clones/treeseg/host_tree/pruned_dated_{st}.nwk",
-        traits = "/nfs/research/zi/daria/game_of_clones/treeseg/presence_per_host.tsv"
+        tree = "/home/daria/Documents/projects/ABC/host_presence/host_tree/ST{st}_100000000_1000_arc_BD.tre",
+        traits = "presence_per_host.tsv"
     output:
         f"{outdir}/st{{st}}/{{subcom}}/tree.pdf"
     params:
         st = lambda wildcards: wildcards.st,
         subcom = lambda wildcards: wildcards.subcom
-    conda: "treeseg"
+    conda: "phylofactor"
     resources:
         mem_mb=lambda wildcards, attempt: 20000*attempt
     shell:
-        "R < tree_seg.R {params.subcom} {params.st} --no-save"
+        "R < phylofactor.R {params.subcom} {params.st} --no-save"

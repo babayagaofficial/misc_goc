@@ -1,5 +1,5 @@
 import pandas as pd
-
+from ete3 import Tree
 
 typing = pd.read_csv("/home/daria/Documents/projects/ABC/goc/typing/type_thresh_4/objects/typing.tsv", sep="\t")
 meta = pd.read_csv("/home/daria/Documents/projects/ABC/goc/media-1.csv")
@@ -9,11 +9,21 @@ with open("exclude_in_503.txt") as f:
 
 print(to_exclude)
 
-hosts = list(set(meta["Genome_ID"].to_list()))
+#hosts = list(set(meta["Genome_ID"].to_list()))
+
+hosts = []
+for st in [69, 73, 95, 131]:
+    tree = Tree(f"/home/daria/Documents/projects/ABC/host_presence/host_tree/ST{st}_100000000_1000_arc_BD.tre", format=1)
+    for node in tree.get_leaves():
+        hosts.append(node.name)
+
+print(len(hosts))
+
+
 names = []
 
 subcomms = list(set(typing["type"].to_list()))
-big_subcomms = [subcomm for subcomm in subcomms if len(typing[typing["type"]==subcomm])>19]
+big_subcomms = [subcomm for subcomm in subcomms if len(typing[typing["type"]==subcomm])>3]
 
 presence_absence = {subcomm:[] for subcomm in big_subcomms}
 
