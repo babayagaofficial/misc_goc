@@ -1,5 +1,7 @@
 import glob
 import pandas as pd
+import os
+import shutil
 import math
 from ete3 import Tree, NodeStyle, TreeStyle, TextFace, faces
 
@@ -18,20 +20,33 @@ for file in glob.glob("/home/daria/Documents/projects/ABC/host_presence/phylofac
     clade_genomes = []
     with open(file, "r") as f:
         genomes = f.read().split("\n")
+    genomes.remove("")
     name_split = file.split("/")
     subcom = name_split[-3]
     st = name_split[-4]
     st_num = st.replace('st',"")
     clade = name_split[-1].replace(".txt", "")
     plasmids = typing[typing["type"]==subcom]["plasmid"].to_list()
+    for plasmid in to_exclude:
+        if plasmid in plasmids:
+            plasmids.remove(plasmid)
     for plasmid in plasmids:
         genome = meta[meta["Plasmid_ID"]==plasmid]["Genome_ID"].values[0]
         if genome in genomes:
-            if not plasmid in to_exclude:
-                clade_plasmids.append(plasmid)
-                clade_genomes.append(genome)
+            clade_plasmids.append(plasmid)
+            clade_genomes.append(genome)
 
-    if len(clade_plasmids)>=4 and len(clade_plasmids)/len(genomes)>=0.5:
+    if len(clade_genomes)==0:
+        rate = 0
+    else:
+        rates = pd.read_csv(f"/home/daria/Documents/projects/ABC/host_presence/phylofactor/{st}/{subcom}/rates.csv")
+        rates = rates[rates["Genome_ID"].isin(clade_genomes)]
+        avg_rate = rates["rate"].sum()/len(clade_genomes)
+        min_rate = rates["rate"].min()
+
+    print(st,clade,subcom,avg_rate,min_rate)
+
+    if min_rate>=0.4 and avg_rate>=0.5 and len(clade_plasmids)>=4:
         clades["subcomm"].append(subcom)
         clades["st"].append(st_num)
         clades["clade"].append(clade)
@@ -47,18 +62,25 @@ for i in range(len(clades["subcomm"])):
     blah = list(set(clades_df[(clades_df["subcomm"]==subcom) & (clades_df["st"]==st)]["clade"].values))
     blah.remove(clade)
     is_contained = False
+    reduce_by = 0
     for other_clade in blah:
         members = set(clades_df[clades_df["clade"]==other_clade]["plasmids"].values[0])
         if plasmids.issubset(members):
             is_contained = True
-    if not is_contained:
 
-        tree = Tree(f"/home/daria/Documents/projects/ABC/host_presence/host_tree/pruned_dated_{st}.nwk")
+    if not is_contained:
+        print(st,clade,subcom)
+        directory = f"/home/daria/Documents/projects/ABC/host_presence/phylofactor/st{st}/{subcom}/correct_clades"
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        shutil.copy(f"/home/daria/Documents/projects/ABC/host_presence/phylofactor/st{st}/{subcom}/clades/{clade}.txt", directory)
+        tree = Tree(f"/home/daria/Documents/projects/ABC/host_presence/host_tree/ST{st}_100000000_1000_arc_BD.tre", format=1)
+        print(len(clades["genomes"][i]))
         tree.prune(clades["genomes"][i], preserve_branch_length=True)
 
         tree.write(format=1, outfile=f"trees/st{st}_cl{clade}_{subcom}.nw")
 
-        filename = f"lists/st{st}_cl{clade}_{subcom}.txt"
+        filename = f"lists_phylofactor/st{st}_cl{clade}_{subcom}.txt"
         leaves = tree.get_leaf_names()
         f = lambda plasmid: leaves.index(meta[meta["Plasmid_ID"]==plasmid]["Genome_ID"].values[0])
         plasmids = list(plasmids)
