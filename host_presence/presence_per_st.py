@@ -12,19 +12,25 @@ big_subcomms = [subcomm for subcomm in subcomms if len(typing[typing["type"]==su
 presence_absence = {subcomm:[] for subcomm in big_subcomms}
 index_sts = []
 
+with open("/home/daria/Documents/projects/ABC/host_presence/exclude_in_503.txt") as f:
+    to_exclude = f.read().split("\n")
+
 for st in sts:
     plasmids_st = meta[meta["ST"]==st]["Plasmid_ID"].to_list()
+    for plasmid in to_exclude:
+        if plasmid in plasmids_st:
+            plasmids_st.remove(plasmid)
     if len(plasmids_st)>0:
         index_sts.append(st)
         num_genomes_st = len(list(set(meta[meta["ST"]==st]["Genome_ID"].to_list())))
         for subcomm in big_subcomms:
             abs_presence = len(typing[typing["plasmid"].isin(plasmids_st) & (typing["type"]==subcomm)]["plasmid"].to_list())
             rel_presence = round(abs_presence/num_genomes_st*100)
-            presence_absence[subcomm].append(rel_presence)
+            presence_absence[subcomm].append(abs_presence)
 
 presence_df = pd.DataFrame(data=presence_absence, index=index_sts)
 presence_df.sort_index(inplace=True)
 presence_df.sort_index(axis=1, inplace=True)
-presence_df.to_csv("presence_per_st.tsv", sep="\t")
+presence_df.to_csv("presence_per_st_abs.tsv", sep="\t")
 sns.heatmap(data=presence_df)
 plt.show()
