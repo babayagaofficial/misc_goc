@@ -8,6 +8,18 @@ import subprocess
 import pandas as pd
 
 ggcaller = snakemake.input.ann_dir
+
+def get_gff_fasta(cluster, gff_id):
+    gene_fasta = f"unmapped_genes/{cluster}/{gff_id}.fna"
+    with open(f"{ggcaller}/gene_calls.ffn") as handle:
+        for record in SeqIO.parse(handle, "fasta"):
+            if record.id == gff_id:
+                with open(gene_fasta, "w") as output:
+                    new_record = SeqRecord(record.seq, id=gff_id)
+                    SeqIO.write(new_record, output, "fasta")
+    return gene_fasta
+
+
 fastas = snakemake.input.fastas
 cluster = snakemake.params.cluster
 os.mkdir(snakemake.output.same_start)

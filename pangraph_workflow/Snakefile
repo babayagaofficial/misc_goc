@@ -1,28 +1,30 @@
 import glob
 import os
+from pathlib import Path
+import subprocess
 
-cluster_path = "/home/daria/Documents/projects/ABC/clades/all_lists" #path to directory with a text file for each cluster, which contains a list of fasta paths to memebers of the cluster
+cluster_path = "/home/daria/Documents/projects/ABC/clades/lists_phylofactor" #path to directory with a text file for each cluster, which contains a list of fasta paths to memebers of the cluster
 out = "pangraph"
 clusters = [os.path.basename(el).replace('.txt','') for el in glob.glob(f"{cluster_path}/*.txt")]
-#clusters = ["st95_cl357_community_0_subcommunity_503", "st95_cl458_community_0_subcommunity_503", "st95_cl656_community_0_subcommunity_503"]
+#clusters = ["st131_cl470_community_0_subcommunity_470"]
 
 
 def get_list(cluster):
     files = []
     with open(f"{cluster_path}/{cluster}.txt") as f:
         for line in f:
-            files.append(line.strip())
+            fasta = line.strip()
+            files.append(fasta)
+            genome = os.path.basename(fasta).replace('.fna','')
+            fasta = Path(fasta)
+            if not fasta.is_file():
+                try:
+                    subprocess.run(f"scp daria@codon-slurm-login.ebi.ac.uk:/nfs/research/zi/daria/game_of_clones/fastas/{genome}.fna /home/daria/Documents/projects/ABC/goc/fastas", shell=True, check=True, capture_output=True)
+                except subprocess.CalledProcessError as e:
+                    print(e.stderr.decode())
+                    print(e)
+                    raise e
     return files
-
-def get_gff_fasta(cluster, gff_id):
-    gene_fasta = f"unmapped_genes/{cluster}/{gff_id}.fna"
-    with open(f"{ggcaller_path}/{cluster}/gene_calls.ffn") as handle:
-        for record in SeqIO.parse(handle, "fasta"):
-            if record.id == gff_id:
-                with open(gene_fasta, "w") as output:
-                    new_record = SeqRecord(record.seq, id=gff_id)
-                    SeqIO.write(new_record, output, "fasta")
-    return gene_fasta
 
 
 rule all:

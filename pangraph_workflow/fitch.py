@@ -104,17 +104,26 @@ def read_core_polymorphisms(pangraph_path, tree):
     A = np.array(core_aln)
     # exclude sites with gaps
     non_gap = np.all(A != "-", axis=0)
-    A = A[:, non_gap]
+    #A = A[:, non_gap]
     # whether a site is polymorphic
     is_polymorphic_w_recomb = np.any(A != A[0, :], axis=0)
-    indices = [i for i in range(0,len(is_polymorphic_w_recomb),500) if is_polymorphic_w_recomb[i:i+500].sum()<=3]
+    window = 500
+    indices = [i for i in range(0,len(is_polymorphic_w_recomb),window) if is_polymorphic_w_recomb[i:i+window].sum()<=3]
     iterator = []
-    for i in range(0,len(is_polymorphic_w_recomb),500):
-        if i in indices:
-            iterator.append(is_polymorphic_w_recomb[i:i+500])
+    for i in range(0,len(is_polymorphic_w_recomb),window):
+        if i+window<len(is_polymorphic_w_recomb):
+            if i in indices:
+                iterator.append(is_polymorphic_w_recomb[i:i+window])
+            else:
+                iterator.append([False for i in range(window)])
         else:
-            iterator.append([False for i in range(500)])
+            rest = len(is_polymorphic_w_recomb) % window
+            if i in indices:
+                iterator.append(is_polymorphic_w_recomb[i:i+rest])
+            else:
+                iterator.append([False for i in range(rest)])
     is_polymorphic = list(chain.from_iterable(iterator))
+    is_polymorphic = is_polymorphic & non_gap
     chr_to_plasmid = {chr.name:plasmid for chr in tree.iter_leaves() for plasmid in plasmids if chr.name in plasmid}
     all_trees = {site:tree.copy() for site in range(len(is_polymorphic)) if is_polymorphic[site]}
     for site in all_trees.keys():
@@ -124,6 +133,14 @@ def read_core_polymorphisms(pangraph_path, tree):
             leaf.add_feature("states", states)
     return all_trees
             
+def read_zombi(pangraph_path, tree):
+    marker_set = {}
+    counts = {}
+    for leaf in tree.iter_leaves():
+        genome_df = pd.read_csv(f"{pangraph_path}/Genomes/{leaf.name}_GENOME.tsv", sep="\t")
+        counts[leaf.name] = genome_df["GENE_FAMILY"].value_counts()
+        marker_set.add(set(counts.index))
+        
 
 
 def tree_to_tsv(t, recon_trees, core, tsv):
@@ -162,7 +179,7 @@ def root_to_tip_scores(recon_trees, filepath):
             for i in range(1,len(path)):
                 if not state in path[i].final_states:
                     score+=1
-                    state = path[i].final_states.pop()
+                    state = path[i].final_states.pop() #would it not be more parsimonious to choose a state that is already in the child?
                     path[i].final_states.add(state)
             root_to_tip[block][leaf.name] = score
     df = pd.DataFrame(data=root_to_tip)
@@ -205,6 +222,8 @@ pangraph = snakemake.input.pangraph
 
 if snakemake.params.mode == "pangraph":
     core, all_trees = read_block_counts(pangraph, tree, 200)
+elif snakemake.params.mode == "zombi":
+    core, all_trees = read_zombi(pangraph, tree)
 else:
     all_trees = read_core_polymorphisms(pangraph, tree)
 
@@ -219,6 +238,7 @@ for block in all_trees.keys():
 if snakemake.params.mode == "pangraph":
     root_to_tip = root_to_tip_scores(all_trees, f"fitch/scores/{cluster}_rtt_scores.tsv")
     tree_to_tsv(tree, all_trees,core,f"fitch/ranges/{cluster}_range.tsv")
+    output_scores(scores, f"fitch/scores/{cluster}_scores.tsv")
 
     new_root = Tree()
     new_root.name = "I_1"

@@ -68,13 +68,13 @@ def get_occurance(counts, block_id):
     else:
         counts[block_id]=1
 
-cluster_path = "/home/daria/Documents/projects/ABC/clades/all_lists"
+cluster_path = "/home/daria/Documents/projects/ABC/clades/lists_phylofactor"
 clusters = [os.path.basename(el).replace('.txt','') for el in glob.glob(f"{cluster_path}/*.txt")]
 
 for cluster in clusters:
     genomes = get_list(cluster_path, cluster)
 
-    if not os.path.exists(f"{cluster}.dist"):
+    if not os.path.exists(f"matching_output/pangraph_dcj_dists/{cluster}.dist"):
         pangraph_dcj(cluster,genomes)
 
     G = nx.Graph()
